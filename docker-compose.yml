@@ -1,0 +1,65 @@
+version: '3.2'
+services:
+    db:
+        image: mysql:8.0.19
+        command: --default-authentication-plugin=mysql_native_password
+        container_name: vm_db
+        restart: always
+        cap_add:
+            - SYS_NICE  # CAP_SYS_NICE
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: vm_db
+        volumes:
+            - "./.docker-data/mysql/data:/var/lib/mysql"
+            - "./backup:/backup"
+
+    phpmyadmin:
+        image: phpmyadmin/phpmyadmin:latest
+        container_name: vm_phpmyadmin
+        environment:
+            PMA_HOST: vm_db
+            PMA_PORT: 3306
+            UPLOAD_LIMIT: 128M
+        ports:
+            - 21010:80
+    
+    init:
+        image: yiisoftware/yii2-php:7.4-fpm
+        container_name: vm_init
+        volumes:
+            - ./:/app
+        env_file:
+            - ./docker.env
+        command: >
+            sh -c "composer install
+            && php init --env=$${ENV_NAME} --overwrite=All
+            && php yii migrate --interactive=0"
+    
+    php-fpm:
+        build: ".platform"
+        container_name: vm_core
+        logging:
+            driver: none
+        restart: always
+        env_file:
+            - ./docker.env
+        volumes:
+            - ./:/app
+    
+    web:
+        image: nginx
+        container_name: vm_web
+        logging:
+            driver: none
+        restart: always
+        volumes:
+            - "./.platform/nginx/conf.d/vhost.conf:/etc/nginx/conf.d/default.conf"
+            - "./.platform/nginx/yii.conf:/etc/nginx/yii.conf"
+            - "./:/app"
+        ports:
+            - "21088:21088" # @api
+            - "21110:21110" # @cdn
+            - "21080:21080" # @backend
+            - "20080:20080" # @frontend
+
